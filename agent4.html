@@ -1,0 +1,933 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AgentScholar</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg-primary:    #ffffff;
+      --bg-secondary:  #f5f5f4;
+      --bg-tertiary:   #efefed;
+      --text-primary:  #1a1a18;
+      --text-secondary:#44413e;
+      --text-tertiary: #888780;
+      --border-soft:   rgba(0,0,0,0.09);
+      --border-mid:    rgba(0,0,0,0.16);
+      --border-hard:   rgba(0,0,0,0.32);
+      --radius:        10px;
+      --font-mono:     'Courier New', monospace;
+      --font-sans:     -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      --claude-color:  #7c3aed;
+      --claude-bg:     #f5f3ff;
+      --claude-border: #ddd6fe;
+      --gpt-color:     #059669;
+      --gpt-bg:        #ecfdf5;
+      --gpt-border:    #a7f3d0;
+      --gemini-color:  #2563eb;
+      --gemini-bg:     #eff6ff;
+      --gemini-border: #bfdbfe;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg-primary:    #1a1a18;
+        --bg-secondary:  #222220;
+        --bg-tertiary:   #2a2a28;
+        --text-primary:  #f0ede8;
+        --text-secondary:#c8c5bf;
+        --text-tertiary: #888780;
+        --border-soft:   rgba(255,255,255,0.07);
+        --border-mid:    rgba(255,255,255,0.13);
+        --border-hard:   rgba(255,255,255,0.28);
+        --claude-bg:     #2e1065;
+        --claude-border: #4c1d95;
+        --gpt-bg:        #064e3b;
+        --gpt-border:    #065f46;
+        --gemini-bg:     #1e3a5f;
+        --gemini-border: #1e40af;
+      }
+    }
+
+    html, body { height: 100%; font-family: var(--font-mono); background: var(--bg-tertiary); }
+
+    .layout { display: flex; height: 100vh; overflow: hidden; }
+
+    /* SIDEBAR */
+    .sidebar { width: 240px; flex-shrink: 0; background: var(--bg-secondary); border-right: 0.5px solid var(--border-soft); display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+    .sidebar-header { padding: 14px 14px 10px; border-bottom: 0.5px solid var(--border-soft); flex-shrink: 0; }
+    .sidebar-logo { font-size: 14px; font-weight: 700; color: var(--text-primary); letter-spacing: -0.5px; display: block; margin-bottom: 2px; }
+    .sidebar-sub { font-size: 10px; color: var(--text-tertiary); }
+    .sidebar-new { margin: 10px; padding: 8px; font-size: 12px; font-family: var(--font-mono); font-weight: 600; color: var(--text-primary); background: var(--bg-primary); border: 0.5px solid var(--border-mid); border-radius: var(--radius); cursor: pointer; width: calc(100% - 20px); transition: all 0.1s; }
+    .sidebar-new:hover { border-color: var(--border-hard); }
+    .sidebar-label { font-size: 10px; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 1px; padding: 10px 14px 5px; flex-shrink: 0; }
+    .sidebar-list { flex: 1; overflow-y: auto; padding: 0 6px 10px; }
+    .sidebar-list::-webkit-scrollbar { width: 3px; }
+    .sidebar-list::-webkit-scrollbar-thumb { background: var(--border-soft); }
+    .sidebar-item { padding: 8px 10px; border-radius: 8px; cursor: pointer; transition: background 0.1s; margin-bottom: 2px; position: relative; }
+    .sidebar-item:hover { background: var(--bg-tertiary); }
+    .sidebar-item.active { background: var(--bg-primary); }
+    .sidebar-item-title { font-size: 11px; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 3px; }
+    .sidebar-item-meta { font-size: 10px; color: var(--text-tertiary); display: flex; gap: 5px; align-items: center; }
+    .sidebar-item-dot { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; }
+    .sidebar-item-delete { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); display: none; background: none; border: none; color: var(--text-tertiary); cursor: pointer; font-size: 12px; padding: 2px 4px; }
+    .sidebar-item:hover .sidebar-item-delete { display: block; }
+    .sidebar-empty { font-size: 11px; color: var(--text-tertiary); text-align: center; padding: 20px 14px; line-height: 1.6; }
+    .sidebar-user { flex-shrink: 0; border-top: 0.5px solid var(--border-soft); padding: 10px; }
+    .sidebar-user-btn { width: 100%; display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; cursor: pointer; background: none; border: 0.5px solid var(--border-soft); font-family: var(--font-mono); transition: all 0.1s; text-decoration: none; }
+    .sidebar-user-btn:hover { background: var(--bg-tertiary); border-color: var(--border-mid); }
+    .sidebar-user-avatar { width: 26px; height: 26px; border-radius: 50%; background: var(--claude-bg); border: 0.5px solid var(--claude-border); display: flex; align-items: center; justify-content: center; font-size: 12px; flex-shrink: 0; color: var(--claude-color); }
+    .sidebar-user-info { flex: 1; text-align: left; }
+    .sidebar-user-name { font-size: 11px; color: var(--text-primary); font-weight: 600; display: block; }
+    .sidebar-user-sub { font-size: 10px; color: var(--text-tertiary); display: block; }
+    #signout-btn { display: none; width: 100%; margin-top: 4px; padding: 5px; font-size: 10px; font-family: var(--font-mono); color: #dc2626; background: none; border: 0.5px solid #fca5a5; border-radius: 6px; cursor: pointer; }
+
+    /* MAIN */
+    .main-area { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+    .topbar { background: var(--bg-primary); border-bottom: 0.5px solid var(--border-soft); padding: 10px 18px; display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+    .topbar-title { font-size: 13px; font-weight: 600; color: var(--text-primary); flex: 1; }
+    .topbar-badge { font-size: 10px; color: var(--text-tertiary); background: var(--bg-secondary); border: 0.5px solid var(--border-soft); border-radius: 4px; padding: 2px 8px; }
+    .main-scroll { flex: 1; overflow-y: auto; padding: 16px; }
+    .main-scroll::-webkit-scrollbar { width: 5px; }
+    .main-scroll::-webkit-scrollbar-thumb { background: var(--border-soft); border-radius: 3px; }
+
+    /* CARDS */
+    .card { background: var(--bg-primary); border: 0.5px solid var(--border-soft); border-radius: var(--radius); margin-bottom: 12px; overflow: hidden; }
+    .card-label { font-size: 10px; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 1px; padding: 10px 14px 8px; border-bottom: 0.5px solid var(--border-soft); }
+
+    /* UPLOAD */
+    .upload-zone { padding: 12px; }
+    .upload-buttons { display: flex; gap: 8px; margin-bottom: 10px; align-items: center; flex-wrap: wrap; }
+    .upload-btn { font-size: 11px; font-family: var(--font-mono); color: var(--text-primary); background: var(--bg-secondary); border: 0.5px solid var(--border-mid); border-radius: 8px; padding: 7px 14px; cursor: pointer; transition: all 0.1s; }
+    .upload-btn:hover { background: var(--bg-tertiary); border-color: var(--border-hard); }
+    .file-indicator { display: none; align-items: center; gap: 8px; background: #ecfdf5; border: 0.5px solid #a7f3d0; border-radius: 8px; padding: 6px 12px; font-size: 11px; color: #065f46; margin-bottom: 8px; }
+    .file-indicator.visible { display: flex; }
+    .file-indicator-name { font-weight: 600; flex: 1; }
+    .file-indicator-remove { background: none; border: none; color: #065f46; cursor: pointer; font-size: 14px; }
+    .pdf-loading { display: none; align-items: center; gap: 8px; font-size: 11px; color: #2563eb; margin-bottom: 8px; }
+    .pdf-loading.visible { display: flex; }
+    .pdf-preview { display: none; margin-bottom: 10px; background: var(--bg-secondary); border: 0.5px solid var(--border-soft); border-radius: 8px; padding: 10px 12px; }
+    .pdf-preview.visible { display: block; }
+    .pdf-preview-label { font-size: 9px; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 5px; }
+    #pdfPreviewText { font-size: 11px; color: var(--text-secondary); max-height: 100px; overflow-y: auto; line-height: 1.6; white-space: pre-wrap; }
+    #paperText { width: 100%; min-height: 80px; max-height: 160px; resize: vertical; font-size: 12px; font-family: var(--font-mono); color: var(--text-primary); background: var(--bg-secondary); border: 0.5px solid var(--border-soft); border-radius: 8px; padding: 10px 12px; outline: none; line-height: 1.6; }
+    #paperText:focus { border-color: var(--border-mid); }
+
+    /* RUN BUTTON */
+    .run-btn { width: 100%; padding: 11px; font-size: 13px; font-family: var(--font-mono); font-weight: 600; cursor: pointer; border-radius: 8px; border: 0.5px solid var(--border-mid); background: var(--bg-primary); color: var(--text-primary); transition: all 0.15s; display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 10px; }
+    .run-btn:hover:not(:disabled) { background: var(--bg-secondary); border-color: var(--border-hard); }
+    .run-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .run-btn.running { background: var(--claude-bg); border-color: var(--claude-border); color: var(--claude-color); }
+
+    /* PIPELINE */
+    .agent-row { display: flex; align-items: center; gap: 10px; padding: 8px 14px; background: var(--bg-primary); border-bottom: 0.5px solid var(--border-soft); cursor: pointer; transition: all 0.4s ease; }
+    .agent-row:last-child { border-bottom: none; }
+    .pipeline.running .agent-row.idle { display: none; }
+    .agent-row.active { background: var(--claude-bg); padding: 16px 14px; border-bottom: none; }
+    .agent-row.active .agent-name { color: var(--claude-color); font-weight: 700; font-size: 14px; }
+    .agent-row.active .agent-num { color: var(--claude-color); }
+    .agent-row.active .agent-desc { color: var(--claude-color); }
+    .agent-row.done { background: #f0fdf4; padding: 5px 14px; border-bottom: 0.5px solid #bbf7d0; }
+    .agent-row.done .agent-name { color: #16a34a; font-size: 11px; }
+    .agent-row.done .agent-num { color: #16a34a; }
+    .agent-row.done .agent-desc { display: none; }
+    .agent-row.done .agent-arrow { display: none; }
+    .agent-num { font-size: 10px; color: var(--text-tertiary); width: 18px; flex-shrink: 0; transition: all 0.4s; }
+    .agent-status-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; background: var(--border-mid); transition: all 0.4s; }
+    .agent-status-dot.active { background: var(--claude-color); width: 10px; height: 10px; animation: pulse 1s ease-in-out infinite; }
+    .agent-status-dot.done { background: #16a34a; width: 6px; height: 6px; }
+    @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.5;transform:scale(0.7)} }
+    .agent-name { font-size: 12px; color: var(--text-secondary); flex: 1; transition: all 0.4s; }
+    .agent-desc { font-size: 10px; color: var(--text-tertiary); transition: all 0.4s; }
+    .agent-arrow { font-size: 11px; color: var(--text-tertiary); flex-shrink: 0; }
+
+    /* STATUS BAR */
+    .status-bar { padding: 7px 12px; border-radius: 8px; font-size: 11px; font-family: var(--font-mono); display: none; align-items: center; gap: 8px; margin-bottom: 12px; }
+    .status-bar.running { display: flex; background: var(--claude-bg); color: var(--claude-color); }
+    .status-bar.done { display: flex; background: #ecfdf5; color: #065f46; }
+    .status-bar.error { display: flex; background: #fef2f2; color: #dc2626; }
+    .progress-track { flex: 1; height: 2px; background: var(--border-soft); border-radius: 1px; overflow: hidden; }
+    .progress-fill { height: 100%; background: currentColor; transition: width 0.5s ease; border-radius: 1px; }
+    .spinner { width: 10px; height: 10px; border: 1.5px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin 0.7s linear infinite; flex-shrink: 0; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* AI RESULTS */
+    .ai-results { display: none; }
+    .ai-results.visible { display: block; }
+
+    .ai-tabs { display: flex; gap: 8px; padding: 12px 14px 8px; flex-wrap: wrap; border-bottom: 0.5px solid var(--border-soft); }
+    .ai-tab { display: flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 8px; cursor: pointer; font-size: 12px; font-family: var(--font-mono); font-weight: 600; border: 1.5px solid transparent; transition: all 0.15s; opacity: 0.5; }
+    .ai-tab .ai-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .ai-tab.claude { background: var(--claude-bg); color: var(--claude-color); border-color: var(--claude-border); }
+    .ai-tab.gpt    { background: var(--gpt-bg);    color: var(--gpt-color);    border-color: var(--gpt-border); }
+    .ai-tab.gemini { background: var(--gemini-bg); color: var(--gemini-color); border-color: var(--gemini-border); }
+    .ai-tab.active { opacity: 1; box-shadow: 0 0 0 2px currentColor; }
+    .ai-tab.ready  { opacity: 1; }
+
+    .ai-panel { display: none; }
+    .ai-panel.active { display: block; }
+
+    /* Claude panel */
+    .claude-agent-tabs { display: flex; overflow-x: auto; background: var(--bg-secondary); border-bottom: 0.5px solid var(--border-soft); }
+    .claude-agent-tabs::-webkit-scrollbar { height: 3px; }
+    .claude-agent-tab { padding: 6px 12px; font-size: 10px; font-family: var(--font-mono); color: var(--text-tertiary); cursor: pointer; border-right: 0.5px solid var(--border-soft); white-space: nowrap; transition: all 0.1s; flex-shrink: 0; }
+    .claude-agent-tab:hover { color: var(--text-primary); }
+    .claude-agent-tab.active { color: var(--claude-color); background: var(--bg-primary); border-bottom: 1.5px solid var(--claude-color); }
+    .claude-agent-tab.done { color: #16a34a; }
+
+    /* GPT & Gemini header */
+    .ai-panel-header { padding: 10px 14px; border-bottom: 0.5px solid var(--border-soft); }
+    .ai-panel-title { font-size: 12px; font-weight: 700; margin-bottom: 2px; }
+    .ai-panel-subtitle { font-size: 10px; color: var(--text-tertiary); }
+
+    .ai-output { padding: 14px; font-size: 13px; font-family: var(--font-sans); color: var(--text-secondary); line-height: 1.75; white-space: pre-wrap; max-height: 400px; overflow-y: auto; }
+    .ai-output::-webkit-scrollbar { width: 4px; }
+    .ai-output-empty { padding: 40px 14px; text-align: center; font-size: 11px; font-family: var(--font-mono); color: var(--text-tertiary); }
+    .ai-output-loading { padding: 14px; display: flex; align-items: center; gap: 10px; font-size: 12px; font-family: var(--font-mono); }
+
+    /* History */
+    .history-ai-tabs { display: flex; gap: 6px; padding: 10px 14px; border-bottom: 0.5px solid var(--border-soft); flex-wrap: wrap; }
+    .history-ai-tab { padding: 5px 12px; border-radius: 6px; font-size: 11px; font-family: var(--font-mono); cursor: pointer; border: 1px solid transparent; font-weight: 600; transition: all 0.1s; }
+    .history-ai-tab.claude { background: var(--claude-bg); color: var(--claude-color); border-color: var(--claude-border); }
+    .history-ai-tab.gpt    { background: var(--gpt-bg);    color: var(--gpt-color);    border-color: var(--gpt-border); }
+    .history-ai-tab.gemini { background: var(--gemini-bg); color: var(--gemini-color); border-color: var(--gemini-border); }
+    .history-ai-tab.active { box-shadow: 0 0 0 2px currentColor; }
+    .history-sub-tabs { display: flex; overflow-x: auto; background: var(--bg-secondary); border-bottom: 0.5px solid var(--border-soft); }
+    .history-sub-tab { padding: 5px 10px; font-size: 10px; font-family: var(--font-mono); color: var(--text-tertiary); cursor: pointer; border-right: 0.5px solid var(--border-soft); white-space: nowrap; flex-shrink: 0; }
+    .history-sub-tab.active { color: var(--claude-color); background: var(--bg-primary); border-bottom: 1.5px solid var(--claude-color); }
+    .history-output { padding: 14px; font-size: 13px; font-family: var(--font-sans); color: var(--text-secondary); line-height: 1.75; white-space: pre-wrap; max-height: 400px; overflow-y: auto; }
+  </style>
+</head>
+<body>
+<div class="layout">
+
+  <!-- SIDEBAR -->
+  <div class="sidebar">
+    <div class="sidebar-header">
+      <span class="sidebar-logo">AgentScholar</span>
+      <span class="sidebar-sub">Claude · GPT-4o · Gemini</span>
+    </div>
+    <button class="sidebar-new" onclick="newAnalysis()">+ New Analysis</button>
+    <div class="sidebar-label">Recent Analyses</div>
+    <div class="sidebar-list" id="sidebarList">
+      <div class="sidebar-empty">No analyses yet.<br>Run your first analysis.</div>
+    </div>
+    <div class="sidebar-user">
+      <a class="sidebar-user-btn" href="auth.html" id="user-btn">
+        <div class="sidebar-user-avatar" id="user-avatar">👤</div>
+        <div class="sidebar-user-info">
+          <span class="sidebar-user-name" id="user-name">Sign In / Register</span>
+          <span class="sidebar-user-sub" id="user-sub">Create your account</span>
+        </div>
+        <span style="font-size:11px;color:var(--text-tertiary);">→</span>
+      </a>
+      <button id="signout-btn" onclick="signOut()">Sign Out</button>
+    </div>
+  </div>
+
+  <!-- MAIN -->
+  <div class="main-area">
+    <div class="topbar">
+      <div class="topbar-title" id="topbarTitle">New Analysis</div>
+      <div class="topbar-badge">v0.5 · Group 3</div>
+    </div>
+
+    <div class="main-scroll" id="mainScroll">
+
+      <!-- ANALYZE VIEW -->
+      <div id="analyzeView">
+
+        <div class="card">
+          <div class="card-label">01 · paper input</div>
+          <div class="upload-zone">
+            <div class="upload-buttons">
+              <button class="upload-btn" onclick="document.getElementById('txtInput').click()">📄 Upload .txt</button>
+              <button class="upload-btn" onclick="document.getElementById('pdfInput').click()">📕 Upload PDF</button>
+              <span style="font-size:11px;color:var(--text-tertiary);">or paste below</span>
+            </div>
+            <input type="file" id="txtInput" accept=".txt" style="display:none" onchange="handleTxt(event)">
+            <input type="file" id="pdfInput" accept=".pdf" style="display:none" onchange="handlePdf(event)">
+            <div class="pdf-loading" id="pdfLoading"><div class="spinner"></div><span>Reading PDF...</span></div>
+            <div class="file-indicator" id="fileIndicator">
+              <span>✓</span>
+              <span class="file-indicator-name" id="fileIndicatorName"></span>
+              <button class="file-indicator-remove" onclick="removeFile()">✕</button>
+            </div>
+            <div class="pdf-preview" id="pdfPreview">
+              <div class="pdf-preview-label">Extracted text preview</div>
+              <div id="pdfPreviewText"></div>
+            </div>
+            <textarea id="paperText" placeholder="Paste research paper text here..."></textarea>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-label">02 · claude — 6 agent pipeline</div>
+          <div class="pipeline" id="pipeline"></div>
+        </div>
+
+        <button class="run-btn" id="runBtn" onclick="startAnalysis()">
+          <span id="runBtnIcon">▶</span>
+          <span id="runBtnText">Run — Claude (6 agents) + GPT-4o + Gemini</span>
+        </button>
+
+        <div id="statusBar" class="status-bar"></div>
+
+        <div class="card ai-results" id="aiResults">
+          <div class="ai-tabs">
+            <div class="ai-tab claude active" id="aiTab-claude" onclick="switchAiTab('claude')">
+              <div class="ai-dot" style="background:var(--claude-color)"></div> Claude
+            </div>
+            <div class="ai-tab gpt" id="aiTab-gpt" onclick="switchAiTab('gpt')">
+              <div class="ai-dot" style="background:var(--gpt-color)"></div> GPT-4o
+            </div>
+            <div class="ai-tab gemini" id="aiTab-gemini" onclick="switchAiTab('gemini')">
+              <div class="ai-dot" style="background:var(--gemini-color)"></div> Gemini
+            </div>
+            <div id="dlBtns" style="display:none;margin-left:auto;gap:4px;align-items:center;padding-right:4px;">
+              <button onclick="dlSingle('claude')" style="font-size:10px;font-family:var(--font-mono);color:var(--claude-color);background:var(--claude-bg);border:0.5px solid var(--claude-border);border-radius:5px;padding:4px 8px;cursor:pointer;">&#8595; Claude</button>
+              <button onclick="dlSingle('gpt')" style="font-size:10px;font-family:var(--font-mono);color:var(--gpt-color);background:var(--gpt-bg);border:0.5px solid var(--gpt-border);border-radius:5px;padding:4px 8px;cursor:pointer;">&#8595; GPT-4o</button>
+              <button onclick="dlSingle('gemini')" style="font-size:10px;font-family:var(--font-mono);color:var(--gemini-color);background:var(--gemini-bg);border:0.5px solid var(--gemini-border);border-radius:5px;padding:4px 8px;cursor:pointer;">&#8595; Gemini</button>
+              <button onclick="dlAll()" style="font-size:10px;font-family:var(--font-mono);color:var(--text-primary);background:var(--bg-secondary);border:0.5px solid var(--border-mid);border-radius:5px;padding:4px 8px;cursor:pointer;">&#8595; All TXT</button>
+            </div>
+          </div>
+
+          <!-- Claude -->
+          <div class="ai-panel active" id="panel-claude">
+            <div class="claude-agent-tabs" id="claudeAgentTabs"></div>
+            <div id="claudeOutput" class="ai-output-empty">Run analysis to see Claude's output</div>
+          </div>
+
+          <!-- GPT-4o -->
+          <div class="ai-panel" id="panel-gpt">
+            <div class="ai-panel-header" style="background:var(--gpt-bg);border-color:var(--gpt-border);">
+              <div class="ai-panel-title" style="color:var(--gpt-color);">GPT-4o — Independent Critic</div>
+              <div class="ai-panel-subtitle">Reviews Claude's final report independently, adds its own perspective</div>
+            </div>
+            <div id="gptOutput" class="ai-output-empty">Waiting for Claude to finish...</div>
+          </div>
+
+          <!-- Gemini -->
+          <div class="ai-panel" id="panel-gemini">
+            <div class="ai-panel-header" style="background:var(--gemini-bg);border-color:var(--gemini-border);">
+              <div class="ai-panel-title" style="color:var(--gemini-color);">Gemini — Independent Reviewer</div>
+              <div class="ai-panel-subtitle">Forms its own opinion about the paper, compares with Claude's view</div>
+            </div>
+            <div id="geminiOutput" class="ai-output-empty">Waiting for Claude to finish...</div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- EVALUATION -->
+      <div class="card" id="evalCard" style="display:none;">
+        <div class="card-label" style="display:flex;align-items:center;justify-content:space-between;">
+          <span>04 &#xB7; evaluation</span>
+          <button id="runEvalBtn" onclick="runEval()" style="font-size:10px;font-family:var(--font-mono);color:#059669;background:#ecfdf5;border:0.5px solid #a7f3d0;border-radius:6px;padding:4px 12px;cursor:pointer;">&#9654; Run Evaluation</button>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;border-bottom:0.5px solid var(--border-soft);">
+          <div style="padding:10px 14px;border-right:0.5px solid var(--border-soft);">
+            <div style="font-size:10px;color:#059669;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Baseline GPT-4o</div>
+            <div id="baselineOut" style="font-size:12px;font-family:var(--font-sans);color:var(--text-tertiary);line-height:1.6;max-height:180px;overflow-y:auto;white-space:pre-wrap;">Click Run Evaluation...</div>
+          </div>
+          <div style="padding:10px 14px;">
+            <div style="font-size:10px;color:var(--claude-color);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Agentic System</div>
+            <div id="agenticOut" style="font-size:12px;font-family:var(--font-sans);color:var(--text-tertiary);line-height:1.6;max-height:180px;overflow-y:auto;white-space:pre-wrap;">Waiting...</div>
+          </div>
+        </div>
+        <div id="evalScores" style="display:none;padding:14px;">
+          <div style="font-size:11px;font-weight:700;color:var(--text-primary);margin-bottom:10px;">&#128202; Results</div>
+          <table style="width:100%;border-collapse:collapse;font-size:12px;font-family:var(--font-mono);">
+            <thead><tr style="border-bottom:1.5px solid var(--border-mid);">
+              <th style="text-align:left;padding:6px 8px;color:var(--text-tertiary);">Metric</th>
+              <th style="text-align:center;padding:6px 8px;color:#059669;">Baseline</th>
+              <th style="text-align:center;padding:6px 8px;color:var(--claude-color);">Agentic</th>
+              <th style="text-align:center;padding:6px 8px;color:var(--text-tertiary);">Winner</th>
+            </tr></thead>
+            <tbody id="evalBody"></tbody>
+          </table>
+          <div id="evalVerdict" style="display:none;margin-top:10px;padding:10px 14px;border-radius:8px;font-size:12px;font-family:var(--font-sans);line-height:1.6;"></div>
+          <div style="margin-top:8px;text-align:right;">
+            <button onclick="dlEval()" style="font-size:10px;font-family:var(--font-mono);color:var(--text-tertiary);background:none;border:0.5px solid var(--border-mid);border-radius:6px;padding:4px 12px;cursor:pointer;">&#8595; Download Evaluation</button>
+          </div>
+        </div>
+        <div id="evalLoad" style="display:none;padding:14px;font-size:12px;font-family:var(--font-mono);color:#059669;align-items:center;gap:8px;">
+          <div class="spinner" style="border-color:#059669;border-right-color:transparent;"></div>
+          <span id="evalLoadTxt">Running...</span>
+        </div>
+      </div>
+
+      <!-- HISTORY VIEW -->
+      <div id="historyView" style="display:none;">
+        <div class="card">
+          <div class="card-label" id="historyViewTitle">Analysis</div>
+          <div class="history-ai-tabs" id="historyAiTabs"></div>
+          <div class="history-sub-tabs" id="historySubTabs" style="display:none;"></div>
+          <div class="history-output" id="historyOutput"></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+// ╔══════════════════════════════════════════════════╗
+// ║         AGENTSCHOLAR v0.5 — 3 AI                ║
+// ║  Group 3                                         ║
+// ╚══════════════════════════════════════════════════╝
+
+// ┌──────────────────────────────────────────────────┐
+// │                 🔑 API KEYS                      │
+// │                                                  │
+// │  Her birini kendi key'inle değiştir.             │
+// │  Tırnakların içine yaz, başka yere dokunma.      │
+// └──────────────────────────────────────────────────┘
+const API_KEYS = {
+
+  // CLAUDE → console.anthropic.com → API Keys
+  claude: ,
+
+  // OPENAI → platform.openai.com → API Keys
+  openai: ,
+
+  // GEMINI → aistudio.google.com → Get API Key
+  gemini: ,
+
+};
+
+const MODELS = {
+  claude: 'claude-haiku-4-5-20251001',
+  openai: 'gpt-4o',
+  gemini: 'gemini-2.5-flash',
+};
+
+pdfjsLib.GlobalWorkerOptions.workerSrc =
+  'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+// CLAUDE 6 AGENT
+const AGENTS = [
+  { id:'understanding', name:'Paper Understanding', desc:'problem · contributions · ideas',
+    system:`You are the Paper Understanding Agent in AgentScholar.
+Extract and explain the research problem, key contributions, and core ideas.
+Structure as:
+RESEARCH PROBLEM: [1-2 sentences]
+KEY CONTRIBUTIONS: [numbered list]
+CORE IDEAS: [2-3 paragraphs]
+Do not hallucinate. Stay grounded in the paper.` },
+  { id:'method', name:'Method Analysis', desc:'models · algorithms · design',
+    system:`You are the Method Analysis Agent in AgentScholar.
+Analyze methodology, models, algorithms, and design choices.
+Structure as:
+METHODOLOGY OVERVIEW: [summary]
+TECHNICAL COMPONENTS: [numbered list]
+DESIGN DECISIONS: [key choices and rationale]` },
+  { id:'experiment', name:'Experiment Analysis', desc:'datasets · metrics · results',
+    system:`You are the Experiment Analysis Agent in AgentScholar.
+Summarize experimental setup, datasets, metrics, and results.
+Structure as:
+EXPERIMENTAL SETUP: [overview]
+DATASETS & METRICS: [what was used]
+KEY RESULTS: [main findings with numbers]` },
+  { id:'critic', name:'Critic Review', desc:'gaps · weaknesses · flags',
+    system:`You are the Critic Agent in AgentScholar.
+Review prior agent outputs. Find inconsistencies, missing info, weak interpretations.
+Structure as:
+INCONSISTENCIES FOUND: [list]
+MISSING INFORMATION: [gaps]
+WEAK INTERPRETATIONS: [overstated claims]` },
+  { id:'verification', name:'Verification', desc:'fact-check · hallucinations',
+    system:`You are the Verification Agent in AgentScholar.
+Cross-check all prior agent claims against the original paper.
+Structure as:
+VERIFIED CLAIMS: [supported]
+PARTIALLY SUPPORTED: [imprecise]
+UNSUPPORTED / FLAGGED: [hallucinated or wrong]` },
+  { id:'refinement', name:'Final Report', desc:'integrated · verified report',
+    system:`You are the Refinement Agent in AgentScholar.
+Produce a final, clean, structured research analysis report.
+Structure as:
+PAPER OVERVIEW
+KEY CONTRIBUTIONS
+METHODOLOGY
+EXPERIMENTAL FINDINGS
+LIMITATIONS
+OVERALL ASSESSMENT` },
+];
+
+// GPT-4o PROMPT
+const GPT_PROMPT = `You are an independent AI critic reviewing a research paper analysis by Claude AI.
+You receive Claude's final analysis and the original paper.
+Add your OWN perspective — agree, disagree, or expand.
+Structure as:
+AGREEMENT: What Claude got right
+DISAGREEMENT: Where you see it differently  
+MISSED POINTS: Important aspects Claude overlooked
+YOUR ASSESSMENT: Your own evaluation (2-3 paragraphs)`;
+
+// GEMINI PROMPT
+const GEMINI_PROMPT = `You are an independent AI reviewer analyzing a research paper.
+You receive Claude's analysis and the original paper.
+Form your OWN independent opinion.
+Structure as:
+INDEPENDENT SUMMARY: Your own summary
+KEY STRENGTHS: What makes this paper valuable
+KEY WEAKNESSES: Limitations you see
+COMPARISON WITH CLAUDE: Where your view differs
+FINAL VERDICT: Your overall rating and recommendation`;
+
+// STATE
+var agentStatuses = {};
+var agentOutputs  = {};
+var isRunning     = false;
+var currentHistoryId = null;
+var activeAiTab   = 'claude';
+var claudeSelectedAgent = 'refinement';
+
+// INIT
+// EXPORT
+
+
+function dlSingle(ai){var t=document.getElementById('topbarTitle').textContent.slice(0,40).replace(/[^a-zA-Z0-9]/g,'_');var txt='';var order=['understanding','method','experiment','critic','verification','refinement'];var nm={understanding:'Paper Understanding',method:'Method Analysis',experiment:'Experiment Analysis',critic:'Critic Review',verification:'Verification',refinement:'Final Report'};if(ai==='claude'){txt='CLAUDE ANALYSIS\n'+'='.repeat(50)+'\n\n';order.forEach(function(id){if(agentOutputs[id])txt+='['+nm[id].toUpperCase()+']\n'+'-'.repeat(40)+'\n'+agentOutputs[id]+'\n\n';});}else if(ai==='gpt'){txt='GPT-4o CRITIC\n'+'='.repeat(50)+'\n\n'+document.getElementById('gptOutput').textContent;}else{txt='GEMINI REVIEWER\n'+'='.repeat(50)+'\n\n'+document.getElementById('geminiOutput').textContent;}var a=document.createElement('a');a.href=URL.createObjectURL(new Blob([txt],{type:'text/plain'}));a.download='AgentScholar_'+ai.toUpperCase()+'_'+t+'.txt';a.click();}
+
+function dlAll(){var title=document.getElementById('topbarTitle').textContent;var slug=title.slice(0,40).replace(/[^a-zA-Z0-9]/g,'_');var txt='AGENTSCHOLAR FULL REPORT\n'+'='.repeat(60)+'\n'+title+'\n'+new Date().toLocaleString()+'\n'+'='.repeat(60)+'\n\n';txt+='>>> CLAUDE <<<\n\n';var order=['understanding','method','experiment','critic','verification','refinement'];var nm={understanding:'Paper Understanding',method:'Method Analysis',experiment:'Experiment Analysis',critic:'Critic Review',verification:'Verification',refinement:'Final Report'};order.forEach(function(id){if(agentOutputs[id])txt+='['+nm[id].toUpperCase()+']\n'+'-'.repeat(40)+'\n'+agentOutputs[id]+'\n\n';});var g=document.getElementById('gptOutput').textContent;if(g&&g.indexOf('Waiting')<0&&g.indexOf('Error')<0)txt+='>>> GPT-4o <<<\n\n'+g+'\n\n';var gem=document.getElementById('geminiOutput').textContent;if(gem&&gem.indexOf('Waiting')<0&&gem.indexOf('Error')<0)txt+='>>> GEMINI <<<\n\n'+gem+'\n\n';txt+='='.repeat(60)+'\nAgentScholar Group 3\n';var a=document.createElement('a');a.href=URL.createObjectURL(new Blob([txt],{type:'text/plain'}));a.download='AgentScholar_FullReport_'+slug+'.txt';a.click();}
+
+var _bt='',_er=null;
+
+async function runEval(){if(!agentOutputs['refinement']){alert('Run main analysis first.');return;}var pt=document.getElementById('paperText').value.trim();if(!pt){alert('No paper text.');return;}var btn=document.getElementById('runEvalBtn');btn.disabled=true;btn.textContent='Running...';document.getElementById('evalLoad').style.display='flex';document.getElementById('evalScores').style.display='none';var tr=pt.slice(0,8000);try{document.getElementById('evalLoadTxt').textContent='Generating baseline...';_bt=await callOpenAI('Summarize this research paper with: RESEARCH PROBLEM, KEY CONTRIBUTIONS, METHODOLOGY, RESULTS, LIMITATIONS.','PAPER:'+tr);document.getElementById('baselineOut').textContent=_bt;document.getElementById('baselineOut').style.color='var(--text-secondary)';document.getElementById('agenticOut').textContent=agentOutputs['refinement'];document.getElementById('agenticOut').style.color='var(--text-secondary)';document.getElementById('evalLoadTxt').textContent='Evaluating...';var ep='You are evaluating two research paper analyses. Rate each on 4 metrics (1-10) based on the actual content quality. Be critical and give different scores where appropriate.\n\nMetrics:\n- Factual Consistency: accuracy of claims vs the paper\n- Coverage: how well key sections are captured\n- Hallucination Rate: freedom from invented claims (10=none)\n- Depth of Analysis: insight and depth\n\nRespond ONLY in this JSON format (use your own scores, do not copy example values):\n{"metrics":[{"name":"Factual Consistency","baseline":0,"agentic":0,"winner":"Agentic"},{"name":"Coverage","baseline":0,"agentic":0,"winner":"Agentic"},{"name":"Hallucination Rate","baseline":0,"agentic":0,"winner":"Agentic"},{"name":"Depth of Analysis","baseline":0,"agentic":0,"winner":"Agentic"}],"verdict":"your assessment here"}';var em='PAPER:'+tr+'\nBASELINE:'+_bt+'\nAGENTIC:'+agentOutputs['refinement'];var raw=await callOpenAI(ep,em);var m=raw.match(/\{[\s\S]*\}/);if(!m)throw new Error('Cannot parse JSON');_er=JSON.parse(m[0]);var tb=document.getElementById('evalBody');tb.innerHTML=_er.metrics.map(function(x){var wc=x.winner==='Agentic'?'var(--claude-color)':'#059669';var w=x.winner==='Agentic'?'Agentic':'Baseline';return '<tr><td style="padding:8px;font-weight:600;color:var(--text-primary);">'+x.name+'</td>'+'<td style="text-align:center;padding:8px;"><span style="background:#ecfdf5;color:#059669;border-radius:4px;padding:2px 10px;font-weight:700;">'+x.baseline+'/10</span></td>'+'<td style="text-align:center;padding:8px;"><span style="background:var(--claude-bg);color:var(--claude-color);border-radius:4px;padding:2px 10px;font-weight:700;">'+x.agentic+'/10</span></td>'+'<td style="text-align:center;padding:8px;color:'+wc+';font-weight:700;">'+w+'</td></tr>';}).join('');var v=document.getElementById('evalVerdict');v.textContent=_er.verdict;v.style.display='block';var wins=_er.metrics.filter(function(x){return x.winner==='Agentic';}).length;v.style.background=wins>=3?'var(--claude-bg)':'#ecfdf5';v.style.color=wins>=3?'var(--claude-color)':'#059669';v.style.border='0.5px solid '+(wins>=3?'var(--claude-border)':'#a7f3d0');document.getElementById('evalScores').style.display='block';}catch(e){alert('Eval error: '+e.message);}document.getElementById('evalLoad').style.display='none';btn.disabled=false;btn.textContent='Re-evaluate';}
+
+function dlEval(){if(!_er)return;var title=document.getElementById('topbarTitle').textContent;var slug=title.slice(0,40).replace(/[^a-zA-Z0-9]/g,'_');var txt='EVALUATION REPORT\n'+'='.repeat(50)+'\n'+title+'\n'+new Date().toLocaleString()+'\nGroup 3\n'+'='.repeat(50)+'\n\nBASELINE:\n'+'-'.repeat(40)+'\n'+_bt+'\n\nSCORES:\n';_er.metrics.forEach(function(m){txt+=m.name+': Baseline='+m.baseline+'/10 Agentic='+m.agentic+'/10 Winner='+m.winner+'\n';});txt+='\nVERDICT:\n'+_er.verdict+'\n';var a=document.createElement('a');a.href=URL.createObjectURL(new Blob([txt],{type:'text/plain'}));a.download='AgentScholar_Evaluation_'+slug+'.txt';a.click();}
+
+function init() {
+  const pipeline = document.getElementById('pipeline');
+  AGENTS.forEach((agent, i) => {
+    const row = document.createElement('div');
+    row.className = 'agent-row';
+    row.id = 'agent-row-' + agent.id;
+    row.innerHTML = `
+      <span class="agent-num">0${i+1}</span>
+      <span class="agent-status-dot" id="dot-${agent.id}"></span>
+      <span class="agent-name">${agent.name} Agent</span>
+      <span class="agent-desc">${agent.desc}</span>
+      <span class="agent-arrow">›</span>
+    `;
+    row.onclick = () => { if (agentOutputs[agent.id]) showClaudeAgent(agent.id); };
+    pipeline.appendChild(row);
+  });
+
+  const claudeTabs = document.getElementById('claudeAgentTabs');
+  AGENTS.forEach((agent, i) => {
+    const tab = document.createElement('div');
+    tab.className = 'claude-agent-tab' + (i === 5 ? ' active' : '');
+    tab.id = 'claudeTab-' + agent.id;
+    tab.textContent = agent.name;
+    tab.onclick = () => { if (agentOutputs[agent.id]) showClaudeAgent(agent.id); };
+    claudeTabs.appendChild(tab);
+  });
+
+  document.getElementById('txtInput').onchange = handleTxt;
+  document.getElementById('pdfInput').onchange = handlePdf;
+  renderSidebar();
+  updateUserBar();
+  window.addEventListener('focus', updateUserBar);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') updateUserBar();
+  });
+}
+
+function showClaudeAgent(agentId) {
+  claudeSelectedAgent = agentId;
+  document.querySelectorAll('.claude-agent-tab').forEach(t => t.classList.remove('active'));
+  const tab = document.getElementById('claudeTab-' + agentId);
+  if (tab) tab.classList.add('active');
+  const out = document.getElementById('claudeOutput');
+  if (agentStatuses[agentId] === 'active') {
+    out.className = 'ai-output-loading';
+    out.innerHTML = `<div class="spinner" style="border-color:var(--claude-color);border-right-color:transparent;width:10px;height:10px;border-width:1.5px;border-radius:50%;animation:spin 0.7s linear infinite;"></div><span style="color:var(--claude-color);">${AGENTS.find(a=>a.id===agentId).name} is processing...</span>`;
+  } else if (agentOutputs[agentId]) {
+    out.className = 'ai-output';
+    out.textContent = agentOutputs[agentId];
+  } else {
+    out.className = 'ai-output-empty';
+    out.textContent = 'waiting for agent...';
+  }
+}
+
+function switchAiTab(ai) {
+  activeAiTab = ai;
+  document.querySelectorAll('.ai-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.ai-panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('aiTab-' + ai).classList.add('active');
+  document.getElementById('panel-' + ai).classList.add('active');
+}
+
+// FILE UPLOAD
+function handleTxt(e) {
+  const file = e.target.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    document.getElementById('paperText').value = ev.target.result;
+    showFileIndicator(file.name, null);
+  };
+  reader.readAsText(file);
+  e.target.value = '';
+}
+
+async function handlePdf(e) {
+  const file = e.target.files[0]; if (!file) return;
+  document.getElementById('pdfLoading').classList.add('visible');
+  document.getElementById('fileIndicator').classList.remove('visible');
+  try {
+    const ab = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: ab }).promise;
+    let text = '';
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      const content = await page.getTextContent();
+      text += content.items.map(x => x.str).join(' ') + '\n\n';
+    }
+    document.getElementById('paperText').value = text.trim();
+    document.getElementById('pdfLoading').classList.remove('visible');
+    showFileIndicator(file.name + ' (' + pdf.numPages + ' pages)', text.trim());
+  } catch (err) {
+    document.getElementById('pdfLoading').classList.remove('visible');
+    alert('PDF error: ' + err.message);
+  }
+  e.target.value = '';
+}
+
+function showFileIndicator(name, text) {
+  document.getElementById('fileIndicatorName').textContent = name;
+  document.getElementById('fileIndicator').classList.add('visible');
+  if (text) {
+    document.getElementById('pdfPreviewText').textContent = text.slice(0, 400) + (text.length > 400 ? '...' : '');
+    document.getElementById('pdfPreview').classList.add('visible');
+    document.getElementById('paperText').style.display = 'none';
+  }
+}
+
+function removeFile() {
+  document.getElementById('paperText').value = '';
+  document.getElementById('paperText').style.display = '';
+  document.getElementById('fileIndicator').classList.remove('visible');
+  document.getElementById('pdfPreview').classList.remove('visible');
+}
+
+function setAgentStatus(agentId, status) {
+  agentStatuses[agentId] = status;
+  const dot = document.getElementById('dot-' + agentId);
+  const row = document.getElementById('agent-row-' + agentId);
+  if (dot) dot.className = 'agent-status-dot ' + status;
+  if (row) row.className = 'agent-row ' + status;
+  if (claudeSelectedAgent === agentId) showClaudeAgent(agentId);
+}
+
+// API CALLS
+async function callClaude(system, user) {
+  const r = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': API_KEYS.claude,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true'
+    },
+    body: JSON.stringify({ model: MODELS.claude, max_tokens: 1000, system, messages: [{ role: 'user', content: user }] })
+  });
+  const d = await r.json();
+  if (d.error) throw new Error('Claude: ' + d.error.message);
+  return d.content[0].text;
+}
+
+async function callOpenAI(system, user) {
+  const r = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + API_KEYS.openai },
+    body: JSON.stringify({ model: MODELS.openai, max_tokens: 7000, messages: [{ role:'system', content:system }, { role:'user', content:user }] })
+  });
+  const d = await r.json();
+  if (d.error) throw new Error('GPT-4o: ' + d.error.message);
+  return d.choices[0].message.content;
+}
+
+async function callGemini(system, user) {
+  const r = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${MODELS.gemini}:generateContent?key=${API_KEYS.gemini}`,
+    { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contents: [{ parts: [{ text: system + '\n\n' + user }] }], generationConfig: { maxOutputTokens: 7000 } }) }
+  );
+  const d = await r.json();
+  if (d.error) throw new Error('Gemini: ' + d.error.message);
+  return d.candidates[0].content.parts[0].text;
+}
+
+// HISTORY
+function saveToHistory(title, claude, gpt, gemini) {
+  const h = JSON.parse(localStorage.getItem('agentscholar_history') || '[]');
+  h.unshift({ id: Date.now(), date: new Date().toLocaleString('en-GB',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}), title: title.slice(0,60).replace(/\n/g,' ').trim(), claude, gpt, gemini });
+  localStorage.setItem('agentscholar_history', JSON.stringify(h.slice(0,30)));
+  renderSidebar();
+}
+
+function loadHistory() { return JSON.parse(localStorage.getItem('agentscholar_history') || '[]'); }
+
+function renderSidebar() {
+  const list = document.getElementById('sidebarList');
+  const h = loadHistory();
+  if (!h.length) { list.innerHTML = '<div class="sidebar-empty">No analyses yet.<br>Run your first analysis.</div>'; return; }
+  list.innerHTML = h.map(e => `
+    <div class="sidebar-item ${currentHistoryId===e.id?'active':''}" id="sitem-${e.id}" onclick="openHistoryItem(${e.id})">
+      <div class="sidebar-item-title">${e.title}</div>
+      <div class="sidebar-item-meta">
+        <div class="sidebar-item-dot" style="background:var(--claude-color)"></div>
+        <div class="sidebar-item-dot" style="background:var(--gpt-color)"></div>
+        <div class="sidebar-item-dot" style="background:var(--gemini-color)"></div>
+        <span>${e.date}</span>
+      </div>
+      <button class="sidebar-item-delete" onclick="deleteHistoryItem(event,${e.id})">✕</button>
+    </div>
+  `).join('');
+}
+
+function openHistoryItem(id) {
+  const e = loadHistory().find(h => h.id === id);
+  if (!e) return;
+  currentHistoryId = id;
+  document.querySelectorAll('.sidebar-item').forEach(el => el.classList.remove('active'));
+  const si = document.getElementById('sitem-' + id);
+  if (si) si.classList.add('active');
+  document.getElementById('topbarTitle').textContent = e.title;
+  document.getElementById('analyzeView').style.display = 'none';
+  document.getElementById('historyView').style.display = 'block';
+  document.getElementById('historyViewTitle').textContent = e.date + ' · ' + e.title;
+
+  document.getElementById('historyAiTabs').innerHTML = `
+    <div class="history-ai-tab claude active" onclick="selectHistoryAI('claude',${id},this)">Claude</div>
+    <div class="history-ai-tab gpt" onclick="selectHistoryAI('gpt',${id},this)">GPT-4o</div>
+    <div class="history-ai-tab gemini" onclick="selectHistoryAI('gemini',${id},this)">Gemini</div>
+  `;
+
+  const subTabs = document.getElementById('historySubTabs');
+  subTabs.style.display = 'flex';
+  subTabs.innerHTML = AGENTS.map((a,i) =>
+    `<div class="history-sub-tab ${i===5?'active':''}" onclick="selectHistoryClaudeAgent('${a.id}',${id},this)">${a.name}</div>`
+  ).join('');
+
+  document.getElementById('historyOutput').textContent = e.claude?.refinement || '(no output)';
+  document.getElementById('mainScroll').scrollTop = 0;
+}
+
+function selectHistoryAI(ai, id, el) {
+  const e = loadHistory().find(h => h.id === id);
+  if (!e) return;
+  document.querySelectorAll('.history-ai-tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  const sub = document.getElementById('historySubTabs');
+  if (ai === 'claude') {
+    sub.style.display = 'flex';
+    document.getElementById('historyOutput').textContent = e.claude?.refinement || '(no output)';
+  } else {
+    sub.style.display = 'none';
+    document.getElementById('historyOutput').textContent = (ai==='gpt' ? e.gpt : e.gemini) || '(no output)';
+  }
+}
+
+function selectHistoryClaudeAgent(agentId, id, el) {
+  const e = loadHistory().find(h => h.id === id);
+  if (!e) return;
+  document.querySelectorAll('.history-sub-tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('historyOutput').textContent = e.claude?.[agentId] || '(no output)';
+}
+
+function deleteHistoryItem(e, id) {
+  e.stopPropagation();
+  const h = loadHistory().filter(x => x.id !== id);
+  localStorage.setItem('agentscholar_history', JSON.stringify(h));
+  if (currentHistoryId === id) newAnalysis(); else renderSidebar();
+}
+
+function newAnalysis() {
+  currentHistoryId = null;
+  document.getElementById('topbarTitle').textContent = 'New Analysis';
+  document.getElementById('analyzeView').style.display = 'block';
+  document.getElementById('historyView').style.display = 'none';
+  document.getElementById('paperText').value = '';
+  document.getElementById('paperText').style.display = '';
+  document.getElementById('fileIndicator').classList.remove('visible');
+  document.getElementById('pdfPreview').classList.remove('visible');
+  document.getElementById('pdfLoading').classList.remove('visible');
+  agentOutputs = {}; agentStatuses = {}; isRunning = false;
+  document.getElementById('pipeline').classList.remove('running');
+  AGENTS.forEach(a => {
+    const dot = document.getElementById('dot-' + a.id);
+    const row = document.getElementById('agent-row-' + a.id);
+    const tab = document.getElementById('claudeTab-' + a.id);
+    if (dot) dot.className = 'agent-status-dot';
+    if (row) { row.className = 'agent-row'; row.style.outline = 'none'; }
+    if (tab) tab.classList.remove('done','active');
+  });
+  document.getElementById('aiResults').classList.remove('visible');
+  document.getElementById('evalCard').style.display='none';
+  document.getElementById('evalScores').style.display='none';
+  document.getElementById('baselineOut').textContent='Click Run Evaluation...';
+  document.getElementById('baselineOut').style.color='var(--text-tertiary)';
+  document.getElementById('agenticOut').textContent='Waiting...';
+  document.getElementById('agenticOut').style.color='var(--text-tertiary)';
+  document.getElementById('runEvalBtn').textContent='Run Evaluation';
+  document.getElementById('runEvalBtn').disabled=false;
+  _er=null;_bt='';
+  var dl=document.getElementById('dlBtns');if(dl)dl.style.display='none';
+  document.getElementById('claudeOutput').className = 'ai-output-empty';
+  document.getElementById('claudeOutput').textContent = "Run analysis to see Claude's output";
+  document.getElementById('gptOutput').className = 'ai-output-empty';
+  document.getElementById('gptOutput').textContent = 'Waiting for Claude to finish...';
+  document.getElementById('geminiOutput').className = 'ai-output-empty';
+  document.getElementById('geminiOutput').textContent = 'Waiting for Claude to finish...';
+  document.getElementById('aiTab-gpt').innerHTML = '<div class="ai-dot" style="background:var(--gpt-color)"></div> GPT-4o';
+  document.getElementById('aiTab-gemini').innerHTML = '<div class="ai-dot" style="background:var(--gemini-color)"></div> Gemini';
+  document.getElementById('statusBar').className = 'status-bar';
+  const btn = document.getElementById('runBtn');
+  btn.disabled = false; btn.classList.remove('running');
+  document.getElementById('runBtnIcon').textContent = '▶';
+  document.getElementById('runBtnText').textContent = 'Run — Claude (6 agents) + GPT-4o + Gemini';
+  switchAiTab('claude');
+  renderSidebar();
+  document.getElementById('mainScroll').scrollTop = 0;
+}
+
+function updateUserBar() {
+  const s = JSON.parse(localStorage.getItem('agentscholar_current_user') || 'null');
+  document.getElementById('user-name').textContent = s ? s.name : 'Sign In / Register';
+  document.getElementById('user-sub').textContent  = s ? s.email : 'Create your account';
+  document.getElementById('user-avatar').textContent = s ? s.name[0].toUpperCase() : '👤';
+  document.getElementById('signout-btn').style.display = s ? 'block' : 'none';
+  document.getElementById('user-btn').href = s ? '#' : 'auth.html';
+}
+
+function signOut() {
+  localStorage.removeItem('agentscholar_current_user');
+  updateUserBar();
+}
+
+// MAIN PIPELINE
+async function startAnalysis() {
+  if (isRunning) return;
+  const paperText = document.getElementById('paperText').value.trim();
+  if (!paperText) { alert('Please add paper text first.'); return; }
+
+  isRunning = true;
+  agentOutputs = {}; agentStatuses = {};
+  AGENTS.forEach(a => { setAgentStatus(a.id, 'idle'); const t = document.getElementById('claudeTab-' + a.id); if(t) t.classList.remove('done','active'); });
+  document.getElementById('pipeline').classList.add('running');
+  document.getElementById('aiResults').classList.add('visible');
+
+  const btn = document.getElementById('runBtn');
+  btn.disabled = true; btn.classList.add('running');
+  document.getElementById('runBtnIcon').textContent = '';
+  document.getElementById('runBtnText').textContent = 'Running...';
+
+  const statusBar = document.getElementById('statusBar');
+  statusBar.className = 'status-bar running';
+
+  const truncated = paperText.slice(0, 8000);
+  let completed = 0;
+
+  switchAiTab('claude');
+
+  // PHASE 1: Claude 6 agent
+  for (const agent of AGENTS) {
+    setAgentStatus(agent.id, 'active');
+    showClaudeAgent(agent.id);
+    statusBar.innerHTML = `<div class="spinner"></div><span>Claude · ${agent.name} Agent (${completed+1}/6)</span><div class="progress-track"><div class="progress-fill" style="width:${Math.round((completed/9)*100)}%"></div></div>`;
+
+    const prev = Object.entries(agentOutputs).map(([id,o]) => `=== ${id.toUpperCase()} ===\n${o.slice(0,600)}`).join('\n\n');
+    const userMsg = `PAPER TEXT:\n${truncated}\n\n${prev ? 'PREVIOUS OUTPUTS:\n'+prev : ''}`;
+
+    try {
+      const result = await callClaude(agent.system, userMsg);
+      agentOutputs[agent.id] = result;
+      setAgentStatus(agent.id, 'done');
+      const t = document.getElementById('claudeTab-' + agent.id);
+      if (t) t.classList.add('done');
+      completed++;
+      showClaudeAgent(agent.id);
+    } catch (err) {
+      statusBar.className = 'status-bar error';
+      statusBar.textContent = '✕ ' + err.message;
+      isRunning = false; btn.disabled = false; btn.classList.remove('running');
+      document.getElementById('runBtnIcon').textContent = '▶';
+      document.getElementById('runBtnText').textContent = 'Retry Analysis';
+      document.getElementById('pipeline').classList.remove('running');
+      return;
+    }
+  }
+
+  showClaudeAgent('refinement');
+  const claudeFinal = agentOutputs['refinement'];
+  const reviewMsg = `CLAUDE'S FINAL ANALYSIS:\n${claudeFinal}\n\nORIGINAL PAPER:\n${truncated}`;
+
+  // PHASE 2: GPT-4o + Gemini paralel
+  statusBar.innerHTML = `<div class="spinner"></div><span>GPT-4o + Gemini reviewing in parallel...</span><div class="progress-track"><div class="progress-fill" style="width:75%"></div></div>`;
+
+  document.getElementById('aiTab-gpt').innerHTML = '<div class="spinner" style="width:8px;height:8px;border:1.5px solid var(--gpt-color);border-right-color:transparent;border-radius:50%;animation:spin 0.7s linear infinite;flex-shrink:0;"></div> GPT-4o';
+  document.getElementById('aiTab-gemini').innerHTML = '<div class="spinner" style="width:8px;height:8px;border:1.5px solid var(--gemini-color);border-right-color:transparent;border-radius:50%;animation:spin 0.7s linear infinite;flex-shrink:0;"></div> Gemini';
+  document.getElementById('gptOutput').className = 'ai-output-loading';
+  document.getElementById('gptOutput').innerHTML = '<div class="spinner" style="border-color:var(--gpt-color);border-right-color:transparent;"></div><span style="color:var(--gpt-color);">GPT-4o reviewing Claude\'s analysis...</span>';
+  document.getElementById('geminiOutput').className = 'ai-output-loading';
+  document.getElementById('geminiOutput').innerHTML = '<div class="spinner" style="border-color:var(--gemini-color);border-right-color:transparent;"></div><span style="color:var(--gemini-color);">Gemini reviewing Claude\'s analysis...</span>';
+
+  // Gemini rate limit için 2 saniye bekle
+  await new Promise(r => setTimeout(r, 2000));
+
+  const [gptRes, gemRes] = await Promise.allSettled([
+    callOpenAI(GPT_PROMPT, reviewMsg),
+    callGemini(GEMINI_PROMPT, reviewMsg)
+  ]);
+
+  let gptText = '', gemText = '';
+
+  if (gptRes.status === 'fulfilled') {
+    gptText = gptRes.value;
+    document.getElementById('gptOutput').className = 'ai-output';
+    document.getElementById('gptOutput').textContent = gptText;
+    document.getElementById('aiTab-gpt').innerHTML = '<div class="ai-dot" style="background:var(--gpt-color)"></div> GPT-4o ✓';
+    document.getElementById('aiTab-gpt').classList.add('ready');
+  } else {
+    document.getElementById('gptOutput').className = 'ai-output-empty';
+    document.getElementById('gptOutput').textContent = 'Error: ' + gptRes.reason?.message;
+    document.getElementById('aiTab-gpt').innerHTML = '<div class="ai-dot" style="background:#dc2626"></div> GPT-4o ✗';
+  }
+
+  if (gemRes.status === 'fulfilled') {
+    gemText = gemRes.value;
+    document.getElementById('geminiOutput').className = 'ai-output';
+    document.getElementById('geminiOutput').textContent = gemText;
+    document.getElementById('aiTab-gemini').innerHTML = '<div class="ai-dot" style="background:var(--gemini-color)"></div> Gemini ✓';
+    document.getElementById('aiTab-gemini').classList.add('ready');
+  } else {
+    document.getElementById('geminiOutput').className = 'ai-output-empty';
+    document.getElementById('geminiOutput').textContent = 'Error: ' + gemRes.reason?.message;
+    document.getElementById('aiTab-gemini').innerHTML = '<div class="ai-dot" style="background:#dc2626"></div> Gemini ✗';
+  }
+
+  saveToHistory(paperText, { ...agentOutputs }, gptText, gemText);
+
+  statusBar.className = 'status-bar done';
+  statusBar.innerHTML = `<span>✓ Claude (6 agents) + GPT-4o + Gemini — complete</span><div class="progress-track"><div class="progress-fill" style="width:100%"></div></div>`;
+  btn.disabled = false; btn.classList.remove('running');
+  document.getElementById('runBtnIcon').textContent = '↺';
+  document.getElementById('runBtnText').textContent = 'Run New Analysis';
+  document.getElementById('pipeline').classList.remove('running');
+  document.getElementById('evalCard').style.display='block';
+  var dl=document.getElementById('dlBtns');if(dl)dl.style.display='flex';
+  isRunning = false;
+}
+
+init();
+</script>
+</body>
+</html>
